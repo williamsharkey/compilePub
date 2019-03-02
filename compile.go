@@ -6,6 +6,8 @@ package compilePub
 
 import (
 	"fmt"
+	"github.com/williamsharkey/compilePub/gotool"
+
 	"github.com/williamsharkey/compilePub/internal/amd64"
 	"github.com/williamsharkey/compilePub/internal/arm"
 	"github.com/williamsharkey/compilePub/internal/arm64"
@@ -19,7 +21,6 @@ import (
 	"github.com/williamsharkey/compilePub/link"
 	"log"
 	"os"
-
 )
 
 var archInits = map[string]func(arch *gc.Arch){
@@ -52,6 +53,25 @@ func Compile() {
 	//gc.Exit(0)
 }
 
-func Link(){
+func Link() {
 	link.Link()
+}
+
+func Get() {
+	gotool.RunGet()
+}
+
+func Build(sourcePath string) {
+	Get()
+	z := os.Args[0:1]
+
+	os.Args = append(z, "-o", "out.o", sourcePath) //"hello/helloworld.go")
+	//os.Args=append(os.Args, "C:/Users/william/go/src/github.com/williamsharkey/compilePub/hello/helloworld.go")
+	Compile()
+
+	os.Args = append(z, "-ld_o", "out.exe", "out.o")
+
+	Link()
+	errorCount := link.ErrorOrExit()
+	os.Exit(errorCount)
 }
