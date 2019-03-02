@@ -21,8 +21,8 @@ import (
 	"net/url"
 	"time"
 
-	"cmd/internal/browser"
 	"github.com/williamsharkey/compilePub/gotool/internal/cfg"
+	"github.com/williamsharkey/compilePub/internal/browser"
 )
 
 // httpClient is the default HTTP client, but a variable so it can be

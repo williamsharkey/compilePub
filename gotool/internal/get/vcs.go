@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"internal/singleflight"
+	"github.com/williamsharkey/compilePub/gointernal/singleflight"
 	"log"
 	"net/url"
 	"os"

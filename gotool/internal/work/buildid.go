@@ -12,12 +12,12 @@ import (
 	"os/exec"
 	"strings"
 
-	"cmd/internal/buildid"
 	"github.com/williamsharkey/compilePub/gotool/internal/base"
 	"github.com/williamsharkey/compilePub/gotool/internal/cache"
 	"github.com/williamsharkey/compilePub/gotool/internal/cfg"
 	"github.com/williamsharkey/compilePub/gotool/internal/load"
 	"github.com/williamsharkey/compilePub/gotool/internal/str"
+	"github.com/williamsharkey/compilePub/internal/buildid"
 )
 
 // Build IDs

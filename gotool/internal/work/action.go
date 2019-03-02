@@ -19,11 +19,11 @@ import (
 	"strings"
 	"sync"
 
-	"cmd/internal/buildid"
 	"github.com/williamsharkey/compilePub/gotool/internal/base"
 	"github.com/williamsharkey/compilePub/gotool/internal/cache"
 	"github.com/williamsharkey/compilePub/gotool/internal/cfg"
 	"github.com/williamsharkey/compilePub/gotool/internal/load"
+	"github.com/williamsharkey/compilePub/internal/buildid"
 )
 
 // A Builder holds global state about a build.

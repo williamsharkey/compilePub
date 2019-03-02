@@ -30,13 +30,13 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"cmd/internal/test2json"
 	"github.com/williamsharkey/compilePub/gotool/internal/base"
 	"github.com/williamsharkey/compilePub/gotool/internal/cache"
 	"github.com/williamsharkey/compilePub/gotool/internal/cfg"
 	"github.com/williamsharkey/compilePub/gotool/internal/load"
 	"github.com/williamsharkey/compilePub/gotool/internal/str"
 	"github.com/williamsharkey/compilePub/gotool/internal/work"
+	"github.com/williamsharkey/compilePub/internal/test2json"
 )
 
 // Break init loop.

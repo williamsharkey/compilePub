@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"cmd/internal/objabi"
+	"github.com/williamsharkey/compilePub/internal/objabi"
 )
 
 // These are general "build flags" used by build and other commands.
