@@ -5,6 +5,7 @@
 // Package get implements the ``go get'' command.
 package get
 
+import "C"
 import (
 	"fmt"
 	"go/build"
@@ -75,25 +76,32 @@ download, see 'go help importpath'.
 
 See also: go build, go install, go clean.
 	`,
+	Run: runGet,
 }
-
-var getD = CmdGet.Flag.Bool("d", false, "")
-var getF = CmdGet.Flag.Bool("f", false, "")
-var getT = CmdGet.Flag.Bool("t", false, "")
-var t = true
-var getU = &t //CmdGet.Flag.Bool("u", false, "")
-var getFix = CmdGet.Flag.Bool("fix", false, "")
-var getInsecure = CmdGet.Flag.Bool("insecure", false, "")
 
 //todo init
-func initTodo(cwd string) {
-	work.AddBuildFlags(CmdGet, cwd)
-	CmdGet.Run = runGet // break init loop
-}
+//func initTodo(cwd string) {
+//	work.AddBuildFlags(CmdGet, cwd)
+//CmdGet.Run = runGet // break init loop
+//}
 
 var RunGet = runGet
 
+//func AddBuildFlags(cwd string){
+
+//}
 func runGet(cmd *base.Command, args []string, cwd string) {
+
+	var getD = cmd.Flag.Bool("d", false, "")
+	var getF = cmd.Flag.Bool("f", false, "")
+	var getT = cmd.Flag.Bool("t", false, "")
+	var t = true
+	var getU = &t //CmdGet.Flag.Bool("u", false, "")
+	var getFix = cmd.Flag.Bool("fix", false, "")
+	var getInsecure = cmd.Flag.Bool("insecure", false, "")
+
+	work.AddBuildFlags(cmd, cwd)
+	//initTodo(cwd)
 	work.BuildInit()
 
 	if *getF && !*getU {
@@ -135,7 +143,7 @@ func runGet(cmd *base.Command, args []string, cwd string) {
 	}
 	args = downloadPaths(args, cwd)
 	for _, arg := range args {
-		download(arg, nil, &stk, mode, cwd)
+		download(arg, nil, &stk, mode, cwd, *getU, *getFix, *getInsecure, *getF)
 	}
 	base.ExitIfErrors()
 
@@ -212,7 +220,7 @@ var downloadRootCache = map[string]bool{}
 
 // download runs the download half of the get command
 // for the package or pattern named by the argument.
-func download(arg string, parent *load.Package, stk *load.ImportStack, mode int, cwd string) {
+func download(arg string, parent *load.Package, stk *load.ImportStack, mode int, cwd string, getU, getFix, getInsecure, getF bool) {
 	fmt.Println("download " + arg)
 
 	if mode&load.ResolveImport != 0 {
@@ -260,10 +268,10 @@ func download(arg string, parent *load.Package, stk *load.ImportStack, mode int,
 	isWildcard := false
 
 	// Download if the package is missing, or update if we're using -u.
-	if p.Dir == "" || *getU {
+	if p.Dir == "" || getU {
 		// The actual download.
 		stk.Push(arg)
-		err := downloadPackage(p)
+		err := downloadPackage(p, getInsecure, getU, getF)
 		if err != nil {
 			base.Errorf("%s", &load.PackageError{ImportStack: stk.Copy(), Err: err.Error()})
 			stk.Pop()
@@ -305,7 +313,7 @@ func download(arg string, parent *load.Package, stk *load.ImportStack, mode int,
 	// Process package, which might now be multiple packages
 	// due to wildcard expansion.
 	for _, p := range pkgs {
-		if *getFix {
+		if getFix {
 			files := base.RelPaths(p.InternalAllGoFiles())
 			base.Run(cfg.BuildToolexec, str.StringList(base.Tool("fix"), files))
 
@@ -359,7 +367,7 @@ func download(arg string, parent *load.Package, stk *load.ImportStack, mode int,
 			if i >= len(p.Imports) {
 				path = load.ResolveImportPath(p, path)
 			}
-			download(path, p, stk, 0, cwd)
+			download(path, p, stk, 0, cwd, getU, getFix, getInsecure, getF)
 		}
 
 		if isWildcard {
@@ -370,7 +378,7 @@ func download(arg string, parent *load.Package, stk *load.ImportStack, mode int,
 
 // downloadPackage runs the create or download command
 // to make the first copy of or update a copy of the given package.
-func downloadPackage(p *load.Package) error {
+func downloadPackage(p *load.Package, getInsecure, getU, getF bool) error {
 	var (
 		vcs            *vcsCmd
 		repo, rootPath string
@@ -378,7 +386,7 @@ func downloadPackage(p *load.Package) error {
 	)
 
 	security := web.Secure
-	if *getInsecure {
+	if getInsecure {
 		security = web.Insecure
 	}
 
@@ -408,14 +416,14 @@ func downloadPackage(p *load.Package) error {
 		repo = "<local>" // should be unused; make distinctive
 
 		// Double-check where it came from.
-		if *getU && vcs.remoteRepo != nil {
+		if getU && vcs.remoteRepo != nil {
 			dir := filepath.Join(p.Internal.Build.SrcRoot, filepath.FromSlash(rootPath))
 			remote, err := vcs.remoteRepo(vcs, dir)
 			if err != nil {
 				return err
 			}
 			repo = remote
-			if !*getF {
+			if !getF {
 				if rr, err := repoRootForImportPath(importPrefix, security); err == nil {
 					repo := rr.repo
 					if rr.vcs.resolveRepo != nil {
@@ -439,7 +447,7 @@ func downloadPackage(p *load.Package) error {
 		}
 		vcs, repo, rootPath = rr.vcs, rr.repo, rr.root
 	}
-	if !vcs.isSecure(repo) && !*getInsecure {
+	if !vcs.isSecure(repo) && !getInsecure {
 		return fmt.Errorf("cannot download, %v uses insecure protocol", repo)
 	}
 
