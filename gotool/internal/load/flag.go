@@ -6,7 +6,6 @@ package load
 
 import (
 	"fmt"
-	"github.com/williamsharkey/compilePub/gotool/internal/base"
 	"github.com/williamsharkey/compilePub/gotool/internal/str"
 	"strings"
 )
@@ -22,6 +21,7 @@ var (
 // that allows specifying different effective flags for different packages.
 // See 'go help build' for more details about per-package flags.
 type PerPackageFlag struct {
+	cwd     string
 	present bool
 	values  []ppfValue
 }
@@ -34,7 +34,7 @@ type ppfValue struct {
 
 // Set is called each time the flag is encountered on the command line.
 func (f *PerPackageFlag) Set(v string) error {
-	return f.set(v, base.Cwd)
+	return f.set(v, f.cwd)
 }
 
 // set is the implementation of Set, taking a cwd (current working directory) for easier testing.
@@ -96,8 +96,8 @@ var cmdlineMatchers []func(*Package) bool
 
 // SetCmdlinePatterns records the set of patterns given on the command line,
 // for use by the PerPackageFlags.
-func SetCmdlinePatterns(args []string) {
-	setCmdlinePatterns(args, base.Cwd)
+func SetCmdlinePatterns(args []string, cwd string) {
+	setCmdlinePatterns(args, cwd)
 }
 
 func setCmdlinePatterns(args []string, cwd string) {

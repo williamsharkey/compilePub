@@ -144,7 +144,8 @@ See also: go install, go get, go clean.
 
 const concurrentGCBackendCompilationEnabledByDefault = true
 
-func init() {
+// todo init
+func initTodo(cwd string) {
 	// break init cycle
 	CmdBuild.Run = runBuild
 	CmdInstall.Run = runInstall
@@ -154,8 +155,8 @@ func init() {
 
 	CmdInstall.Flag.BoolVar(&cfg.BuildI, "i", false, "")
 
-	AddBuildFlags(CmdBuild)
-	AddBuildFlags(CmdInstall)
+	AddBuildFlags(CmdBuild, cwd)
+	AddBuildFlags(CmdInstall, cwd)
 }
 
 // Note that flags consulted by other parts of the code
@@ -205,7 +206,7 @@ func init() {
 
 // addBuildFlags adds the flags common to the build, clean, get,
 // install, list, run, and test commands.
-func AddBuildFlags(cmd *base.Command) {
+func AddBuildFlags(cmd *base.Command, cwd string) {
 	cmd.Flag.BoolVar(&cfg.BuildA, "a", false, "")
 	cmd.Flag.BoolVar(&cfg.BuildN, "n", false, "")
 	cmd.Flag.IntVar(&cfg.BuildP, "p", cfg.BuildP, "")
@@ -272,12 +273,12 @@ var pkgsFilter = func(pkgs []*load.Package) []*load.Package { return pkgs }
 
 var runtimeVersion = runtime.Version()
 
-func runBuild(cmd *base.Command, args []string) {
+func runBuild(cmd *base.Command, args []string, cwd string) {
 	BuildInit()
 	var b Builder
 	b.Init()
 
-	pkgs := load.PackagesForBuild(args)
+	pkgs := load.PackagesForBuild(args, cwd)
 
 	if len(pkgs) == 1 && pkgs[0].Name == "main" && cfg.BuildO == "" {
 		_, cfg.BuildO = path.Split(pkgs[0].ImportPath)
@@ -309,7 +310,7 @@ func runBuild(cmd *base.Command, args []string) {
 		depMode = ModeInstall
 	}
 
-	pkgs = pkgsFilter(load.Packages(args))
+	pkgs = pkgsFilter(load.Packages(args, cwd))
 
 	if cfg.BuildO != "" {
 		if len(pkgs) > 1 {
@@ -321,19 +322,19 @@ func runBuild(cmd *base.Command, args []string) {
 		p.Target = cfg.BuildO
 		p.Stale = true // must build - not up to date
 		p.StaleReason = "build -o flag in use"
-		a := b.AutoAction(ModeInstall, depMode, p)
-		b.Do(a)
+		a := b.AutoAction(ModeInstall, depMode, p, cwd)
+		b.Do(a, cwd)
 		return
 	}
 
 	a := &Action{Mode: "go build"}
 	for _, p := range pkgs {
-		a.Deps = append(a.Deps, b.AutoAction(ModeBuild, depMode, p))
+		a.Deps = append(a.Deps, b.AutoAction(ModeBuild, depMode, p, cwd))
 	}
 	if cfg.BuildBuildmode == "shared" {
-		a = b.buildmodeShared(ModeBuild, depMode, args, pkgs, a)
+		a = b.buildmodeShared(ModeBuild, depMode, args, pkgs, a, cwd)
 	}
-	b.Do(a)
+	b.Do(a, cwd)
 }
 
 var CmdInstall = &base.Command{
@@ -407,17 +408,17 @@ func libname(args []string, pkgs []*load.Package) (string, error) {
 	return "lib" + libname + ".so", nil
 }
 
-func runInstall(cmd *base.Command, args []string) {
+func runInstall(cmd *base.Command, args []string, cwd string) {
 	BuildInit()
-	InstallPackages(args, false)
+	InstallPackages(args, false, cwd)
 }
 
-func InstallPackages(args []string, forGet bool) {
+func InstallPackages(args []string, forGet bool, cwd string) {
 	if cfg.GOBIN != "" && !filepath.IsAbs(cfg.GOBIN) {
 		base.Fatalf("cannot install, GOBIN must be an absolute path")
 	}
 
-	pkgs := pkgsFilter(load.PackagesForBuild(args))
+	pkgs := pkgsFilter(load.PackagesForBuild(args, cwd))
 
 	for _, p := range pkgs {
 		if p.Target == "" && (!p.Standard || p.ImportPath != "unsafe") {
@@ -453,7 +454,7 @@ func InstallPackages(args []string, forGet bool) {
 		// If p is a tool, delay the installation until the end of the build.
 		// This avoids installing assemblers/compilers that are being executed
 		// by other steps in the build.
-		a1 := b.AutoAction(ModeInstall, depMode, p)
+		a1 := b.AutoAction(ModeInstall, depMode, p, cwd)
 		if load.InstallTargetDir(p) == load.ToTool {
 			a.Deps = append(a.Deps, a1.Deps...)
 			a1.Deps = append(a1.Deps, a)
@@ -475,10 +476,10 @@ func InstallPackages(args []string, forGet bool) {
 		// tools above did not apply, and a is just a simple Action
 		// with a list of Deps, one per package named in pkgs,
 		// the same as in runBuild.
-		a = b.buildmodeShared(ModeInstall, ModeInstall, args, pkgs, a)
+		a = b.buildmodeShared(ModeInstall, ModeInstall, args, pkgs, a, cwd)
 	}
 
-	b.Do(a)
+	b.Do(a, cwd)
 	base.ExitIfErrors()
 
 	// Success. If this command is 'go install' with no arguments

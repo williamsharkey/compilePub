@@ -118,6 +118,6 @@ Flags:
 `,
 }
 
-func runDoc(cmd *base.Command, args []string) {
+func runDoc(cmd *base.Command, args []string, cwd string) {
 	base.Run(cfg.BuildToolexec, base.Tool("doc"), args)
 }

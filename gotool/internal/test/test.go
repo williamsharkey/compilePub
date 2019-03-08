@@ -532,7 +532,7 @@ var testVetFlags = []string{
 	// "-unusedresult",
 }
 
-func runTest(cmd *base.Command, args []string) {
+func runTest(cmd *base.Command, args []string, cwd string) {
 	pkgArgs, testArgs = testFlags(args)
 
 	work.FindExecCmd() // initialize cached result
@@ -540,7 +540,7 @@ func runTest(cmd *base.Command, args []string) {
 	work.BuildInit()
 	work.VetFlags = testVetFlags
 
-	pkgs = load.PackagesForBuild(pkgArgs)
+	pkgs = load.PackagesForBuild(pkgArgs, cwd)
 	if len(pkgs) == 0 {
 		base.Fatalf("no packages to test")
 	}
@@ -631,10 +631,10 @@ func runTest(cmd *base.Command, args []string) {
 		sort.Strings(all)
 
 		a := &work.Action{Mode: "go test -i"}
-		for _, p := range load.PackagesForBuild(all) {
+		for _, p := range load.PackagesForBuild(all, cwd) {
 			a.Deps = append(a.Deps, b.CompileAction(work.ModeInstall, work.ModeInstall, p))
 		}
-		b.Do(a)
+		b.Do(a, cwd)
 		if !testC || a.Failed {
 			return
 		}
@@ -647,7 +647,7 @@ func runTest(cmd *base.Command, args []string) {
 		match := make([]func(*load.Package) bool, len(testCoverPaths))
 		matched := make([]bool, len(testCoverPaths))
 		for i := range testCoverPaths {
-			match[i] = load.MatchPackage(testCoverPaths[i], base.Cwd)
+			match[i] = load.MatchPackage(testCoverPaths[i], cwd)
 		}
 
 		// Select for coverage all dependencies matching the testCoverPaths patterns.
@@ -701,7 +701,7 @@ func runTest(cmd *base.Command, args []string) {
 			coverFiles = append(coverFiles, p.TestGoFiles...)
 			p.Internal.CoverVars = declareCoverVars(p.ImportPath, coverFiles...)
 			if testCover && testCoverMode == "atomic" {
-				ensureImport(p, "sync/atomic")
+				ensureImport(p, "sync/atomic", cwd)
 			}
 		}
 	}
@@ -710,10 +710,10 @@ func runTest(cmd *base.Command, args []string) {
 	for _, p := range pkgs {
 		// sync/atomic import is inserted by the cover tool. See #18486
 		if testCover && testCoverMode == "atomic" {
-			ensureImport(p, "sync/atomic")
+			ensureImport(p, "sync/atomic", cwd)
 		}
 
-		buildTest, runTest, printTest, err := builderTest(&b, p)
+		buildTest, runTest, printTest, err := builderTest(&b, p, cwd)
 		if err != nil {
 			str := err.Error()
 			if strings.HasPrefix(str, "\n") {
@@ -757,18 +757,18 @@ func runTest(cmd *base.Command, args []string) {
 		}
 	}
 
-	b.Do(root)
+	b.Do(root, cwd)
 }
 
 // ensures that package p imports the named package
-func ensureImport(p *load.Package, pkg string) {
+func ensureImport(p *load.Package, pkg string, cwd string) {
 	for _, d := range p.Internal.Imports {
 		if d.Name == pkg {
 			return
 		}
 	}
 
-	p1 := load.LoadPackage(pkg, &load.ImportStack{})
+	p1 := load.LoadPackage(pkg, &load.ImportStack{}, cwd)
 	if p1.Error != nil {
 		base.Fatalf("load %s: %v", pkg, p1.Error)
 	}
@@ -783,11 +783,11 @@ var windowsBadWords = []string{
 	"update",
 }
 
-func builderTest(b *work.Builder, p *load.Package) (buildAction, runAction, printAction *work.Action, err error) {
+func builderTest(b *work.Builder, p *load.Package, cwd string) (buildAction, runAction, printAction *work.Action, err error) {
 	if len(p.TestGoFiles)+len(p.XTestGoFiles) == 0 {
 		build := b.CompileAction(work.ModeBuild, work.ModeBuild, p)
 		run := &work.Action{Mode: "test run", Package: p, Deps: []*work.Action{build}}
-		addTestVet(b, p, run, nil)
+		addTestVet(b, p, run, nil, cwd)
 		print := &work.Action{Mode: "test print", Func: builderNoTest, Package: p, Deps: []*work.Action{run}}
 		return build, run, print, nil
 	}
@@ -800,7 +800,7 @@ func builderTest(b *work.Builder, p *load.Package) (buildAction, runAction, prin
 
 	localCover := testCover && testCoverPaths == nil
 
-	ptest, pxtest, err = load.TestPackagesFor(p, localCover || p.Name == "main")
+	ptest, pxtest, err = load.TestPackagesFor(p, localCover || p.Name == "main", cwd)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -866,7 +866,7 @@ func builderTest(b *work.Builder, p *load.Package) (buildAction, runAction, prin
 		if dep == ptest.ImportPath {
 			pmain.Internal.Imports = append(pmain.Internal.Imports, ptest)
 		} else {
-			p1 := load.LoadImport(dep, "", nil, &stk, nil, 0)
+			p1 := load.LoadImport(dep, "", nil, &stk, nil, 0, cwd)
 			if p1.Error != nil {
 				return nil, nil, nil, p1.Error
 			}
@@ -892,7 +892,7 @@ func builderTest(b *work.Builder, p *load.Package) (buildAction, runAction, prin
 	// Use that metadata to update the list of imports for package main.
 	// The list of imports is used by recompileForTest and by the loop
 	// afterward that gathers t.Cover information.
-	t, err := loadTestFuncs(ptest)
+	t, err := loadTestFuncs(ptest, cwd)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -935,7 +935,7 @@ func builderTest(b *work.Builder, p *load.Package) (buildAction, runAction, prin
 	// so that the default file path stripping applies to _testmain.go.
 	b.CompileAction(work.ModeBuild, work.ModeBuild, pmain).Objdir = testDir
 
-	a := b.LinkAction(work.ModeBuild, work.ModeBuild, pmain)
+	a := b.LinkAction(work.ModeBuild, work.ModeBuild, pmain, cwd)
 	a.Target = testDir + testBinary + cfg.ExeSuffix
 	if cfg.Goos == "windows" {
 		// There are many reserved words on Windows that,
@@ -971,11 +971,11 @@ func builderTest(b *work.Builder, p *load.Package) (buildAction, runAction, prin
 	var installAction, cleanAction *work.Action
 	if testC || testNeedBinary {
 		// -c or profiling flag: create action to copy binary to ./test.out.
-		target := filepath.Join(base.Cwd, testBinary+cfg.ExeSuffix)
+		target := filepath.Join(cwd, testBinary+cfg.ExeSuffix)
 		if testO != "" {
 			target = testO
 			if !filepath.IsAbs(target) {
-				target = filepath.Join(base.Cwd, target)
+				target = filepath.Join(cwd, target)
 			}
 		}
 		pmain.Target = target
@@ -1003,10 +1003,10 @@ func builderTest(b *work.Builder, p *load.Package) (buildAction, runAction, prin
 			Objdir:     testDir,
 		}
 		if len(ptest.GoFiles)+len(ptest.CgoFiles) > 0 {
-			addTestVet(b, ptest, runAction, installAction)
+			addTestVet(b, ptest, runAction, installAction, cwd)
 		}
 		if pxtest != nil {
-			addTestVet(b, pxtest, runAction, installAction)
+			addTestVet(b, pxtest, runAction, installAction, cwd)
 		}
 		cleanAction = &work.Action{
 			Mode:       "test clean",
@@ -1036,12 +1036,12 @@ func builderTest(b *work.Builder, p *load.Package) (buildAction, runAction, prin
 	return buildAction, runAction, printAction, nil
 }
 
-func addTestVet(b *work.Builder, p *load.Package, runAction, installAction *work.Action) {
+func addTestVet(b *work.Builder, p *load.Package, runAction, installAction *work.Action, cwd string) {
 	if testVetList == "off" {
 		return
 	}
 
-	vet := b.VetAction(work.ModeBuild, work.ModeBuild, p)
+	vet := b.VetAction(work.ModeBuild, work.ModeBuild, p, cwd)
 	runAction.Deps = append(runAction.Deps, vet)
 	// Install will clean the build directory.
 	// Make sure vet runs first.
@@ -1149,7 +1149,7 @@ func (lockedStdout) Write(b []byte) (int, error) {
 }
 
 // builderRunTest is the action for running a test binary.
-func (c *runCache) builderRunTest(b *work.Builder, a *work.Action) error {
+func (c *runCache) builderRunTest(b *work.Builder, a *work.Action, cwd string) error {
 	if a.Failed {
 		// We were unable to build the binary.
 		a.Failed = false
@@ -1708,7 +1708,7 @@ func coveragePercentage(out []byte) string {
 }
 
 // builderCleanTest is the action for cleaning up after a test.
-func builderCleanTest(b *work.Builder, a *work.Action) error {
+func builderCleanTest(b *work.Builder, a *work.Action, cwd string) error {
 	if cfg.BuildWork {
 		return nil
 	}
@@ -1720,7 +1720,7 @@ func builderCleanTest(b *work.Builder, a *work.Action) error {
 }
 
 // builderPrintTest is the action for printing a test result.
-func builderPrintTest(b *work.Builder, a *work.Action) error {
+func builderPrintTest(b *work.Builder, a *work.Action, cwd string) error {
 	clean := a.Deps[0]
 	run := clean.Deps[0]
 	if run.TestOutput != nil {
@@ -1731,7 +1731,7 @@ func builderPrintTest(b *work.Builder, a *work.Action) error {
 }
 
 // builderNoTest is the action for testing a package with no test files.
-func builderNoTest(b *work.Builder, a *work.Action) error {
+func builderNoTest(b *work.Builder, a *work.Action, cwd string) error {
 	var stdout io.Writer = os.Stdout
 	if testJSON {
 		json := test2json.NewConverter(lockedStdout{}, a.Package.ImportPath, test2json.Timestamp)
@@ -1788,17 +1788,17 @@ type coverInfo struct {
 }
 
 // loadTestFuncs returns the testFuncs describing the tests that will be run.
-func loadTestFuncs(ptest *load.Package) (*testFuncs, error) {
+func loadTestFuncs(ptest *load.Package, cwd string) (*testFuncs, error) {
 	t := &testFuncs{
 		Package: ptest,
 	}
 	for _, file := range ptest.TestGoFiles {
-		if err := t.load(filepath.Join(ptest.Dir, file), "_test", &t.ImportTest, &t.NeedTest); err != nil {
+		if err := t.load(filepath.Join(ptest.Dir, file), "_test", &t.ImportTest, &t.NeedTest, cwd); err != nil {
 			return nil, err
 		}
 	}
 	for _, file := range ptest.XTestGoFiles {
-		if err := t.load(filepath.Join(ptest.Dir, file), "_xtest", &t.ImportXtest, &t.NeedXtest); err != nil {
+		if err := t.load(filepath.Join(ptest.Dir, file), "_xtest", &t.ImportXtest, &t.NeedXtest, cwd); err != nil {
 			return nil, err
 		}
 	}
@@ -1879,10 +1879,10 @@ type testFunc struct {
 
 var testFileSet = token.NewFileSet()
 
-func (t *testFuncs) load(filename, pkg string, doImport, seen *bool) error {
+func (t *testFuncs) load(filename, pkg string, doImport, seen *bool, cwd string) error {
 	f, err := parser.ParseFile(testFileSet, filename, nil, parser.ParseComments)
 	if err != nil {
-		return base.ExpandScanner(err)
+		return base.ExpandScanner(cwd, err)
 	}
 	for _, d := range f.Decls {
 		n, ok := d.(*ast.FuncDecl)

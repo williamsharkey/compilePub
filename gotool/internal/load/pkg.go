@@ -351,13 +351,13 @@ func ClearPackageCachePartial(args []string) {
 
 // reloadPackage is like loadPackage but makes sure
 // not to use the package cache.
-func ReloadPackage(arg string, stk *ImportStack) *Package {
+func ReloadPackage(arg string, stk *ImportStack, cwd string) *Package {
 	p := packageCache[arg]
 	if p != nil {
 		delete(packageCache, p.Dir)
 		delete(packageCache, p.ImportPath)
 	}
-	return LoadPackage(arg, stk)
+	return LoadPackage(arg, stk, cwd)
 }
 
 // dirToImportPath returns the pseudo-import path we use for a package
@@ -406,7 +406,7 @@ const (
 // but possibly a local import path (an absolute file system path or one beginning
 // with ./ or ../). A local relative path is interpreted relative to srcDir.
 // It returns a *Package describing the package found in that directory.
-func LoadImport(path, srcDir string, parent *Package, stk *ImportStack, importPos []token.Position, mode int) *Package {
+func LoadImport(path, srcDir string, parent *Package, stk *ImportStack, importPos []token.Position, mode int, cwd string) *Package {
 	stk.Push(path)
 	defer stk.Pop()
 
@@ -458,9 +458,9 @@ func LoadImport(path, srcDir string, parent *Package, stk *ImportStack, importPo
 			!strings.Contains(path, "/vendor/") && !strings.HasPrefix(path, "vendor/") {
 			err = fmt.Errorf("code in directory %s expects import %q", bp.Dir, bp.ImportComment)
 		}
-		p.load(stk, bp, err)
+		p.load(stk, bp, err, cwd)
 		if p.Error != nil && p.Error.Pos == "" {
-			p = setErrorPos(p, importPos)
+			p = setErrorPos(p, importPos, cwd)
 		}
 
 		if origPath != cleanImport(origPath) {
@@ -474,11 +474,11 @@ func LoadImport(path, srcDir string, parent *Package, stk *ImportStack, importPo
 
 	// Checked on every import because the rules depend on the code doing the importing.
 	if perr := disallowInternal(srcDir, p, stk); perr != p {
-		return setErrorPos(perr, importPos)
+		return setErrorPos(perr, importPos, cwd)
 	}
 	if mode&ResolveImport != 0 {
 		if perr := disallowVendor(srcDir, origPath, p, stk); perr != p {
-			return setErrorPos(perr, importPos)
+			return setErrorPos(perr, importPos, cwd)
 		}
 	}
 
@@ -488,7 +488,7 @@ func LoadImport(path, srcDir string, parent *Package, stk *ImportStack, importPo
 			ImportStack: stk.Copy(),
 			Err:         fmt.Sprintf("import %q is a program, not an importable package", path),
 		}
-		return setErrorPos(&perr, importPos)
+		return setErrorPos(&perr, importPos, cwd)
 	}
 
 	if p.Internal.Local && parent != nil && !parent.Internal.Local {
@@ -497,16 +497,16 @@ func LoadImport(path, srcDir string, parent *Package, stk *ImportStack, importPo
 			ImportStack: stk.Copy(),
 			Err:         fmt.Sprintf("local import %q in non-local package", path),
 		}
-		return setErrorPos(&perr, importPos)
+		return setErrorPos(&perr, importPos, cwd)
 	}
 
 	return p
 }
 
-func setErrorPos(p *Package, importPos []token.Position) *Package {
+func setErrorPos(p *Package, importPos []token.Position, cwd string) *Package {
 	if len(importPos) > 0 {
 		pos := importPos[0]
-		pos.Filename = base.ShortPath(pos.Filename)
+		pos.Filename = base.ShortPath(cwd, pos.Filename)
 		p.Error.Pos = pos.String()
 	}
 	return p
@@ -1054,7 +1054,7 @@ var foldPath = make(map[string]string)
 
 // load populates p using information from bp, err, which should
 // be the result of calling build.Context.Import.
-func (p *Package) load(stk *ImportStack, bp *build.Package, err error) {
+func (p *Package) load(stk *ImportStack, bp *build.Package, err error, cwd string) {
 	p.copyBuild(bp)
 
 	// Decide whether p was listed on the command line.
@@ -1088,7 +1088,7 @@ func (p *Package) load(stk *ImportStack, bp *build.Package, err error) {
 			err = &NoGoError{Package: p}
 		}
 		p.Incomplete = true
-		err = base.ExpandScanner(err)
+		err = base.ExpandScanner(cwd, err)
 		p.Error = &PackageError{
 			ImportStack: stk.Copy(),
 			Err:         err.Error(),
@@ -1247,7 +1247,7 @@ func (p *Package) load(stk *ImportStack, bp *build.Package, err error) {
 		if path == "C" {
 			continue
 		}
-		p1 := LoadImport(path, p.Dir, p, stk, p.Internal.Build.ImportPos[path], ResolveImport)
+		p1 := LoadImport(path, p.Dir, p, stk, p.Internal.Build.ImportPos[path], ResolveImport, cwd)
 		if p.Standard && p.Error == nil && !p1.Standard && p1.Error == nil {
 			p.Error = &PackageError{
 				ImportStack: stk.Copy(),
@@ -1520,7 +1520,7 @@ func ClearCmdCache() {
 // not for paths found in import statements. In addition to ordinary import paths,
 // loadPackage accepts pseudo-paths beginning with cmd/ to denote commands
 // in the Go command directory, as well as paths to those directories.
-func LoadPackage(arg string, stk *ImportStack) *Package {
+func LoadPackage(arg string, stk *ImportStack, cwd string) *Package {
 	if build.IsLocalImport(arg) {
 		dir := arg
 		if !filepath.IsAbs(dir) {
@@ -1551,7 +1551,7 @@ func LoadPackage(arg string, stk *ImportStack) *Package {
 		bp.SrcRoot = cfg.GOROOTsrc
 		p := new(Package)
 		cmdCache[arg] = p
-		p.load(stk, bp, err)
+		p.load(stk, bp, err, cwd)
 		if p.Error == nil && p.Name != "main" {
 			p.Error = &PackageError{
 				ImportStack: stk.Copy(),
@@ -1568,13 +1568,13 @@ func LoadPackage(arg string, stk *ImportStack) *Package {
 	// referring to io/ioutil rather than a hypothetical import of
 	// "./ioutil".
 	if build.IsLocalImport(arg) {
-		bp, _ := cfg.BuildContext.ImportDir(filepath.Join(base.Cwd, arg), build.FindOnly)
+		bp, _ := cfg.BuildContext.ImportDir(filepath.Join(cwd, arg), build.FindOnly)
 		if bp.ImportPath != "" && bp.ImportPath != "." {
 			arg = bp.ImportPath
 		}
 	}
 
-	return LoadImport(arg, base.Cwd, nil, stk, nil, 0)
+	return LoadImport(arg, cwd, nil, stk, nil, 0, cwd)
 }
 
 // packages returns the packages named by the
@@ -1585,9 +1585,9 @@ func LoadPackage(arg string, stk *ImportStack) *Package {
 // to load dependencies of a named package, the named
 // package is still returned, with p.Incomplete = true
 // and details in p.DepsErrors.
-func Packages(args []string) []*Package {
+func Packages(args []string, cwd string) []*Package {
 	var pkgs []*Package
-	for _, pkg := range PackagesAndErrors(args) {
+	for _, pkg := range PackagesAndErrors(args, cwd) {
 		if pkg.Error != nil {
 			base.Errorf("can't load package: %s", pkg.Error)
 			continue
@@ -1601,12 +1601,12 @@ func Packages(args []string) []*Package {
 // *Package for every argument, even the ones that
 // cannot be loaded at all.
 // The packages that fail to load will have p.Error != nil.
-func PackagesAndErrors(args []string) []*Package {
+func PackagesAndErrors(args []string, cwd string) []*Package {
 	if len(args) > 0 && strings.HasSuffix(args[0], ".go") {
-		return []*Package{GoFilesPackage(args)}
+		return []*Package{GoFilesPackage(args, cwd)}
 	}
 
-	args = ImportPaths(args)
+	args = ImportPaths(args, cwd)
 	var (
 		pkgs    []*Package
 		stk     ImportStack
@@ -1619,7 +1619,7 @@ func PackagesAndErrors(args []string) []*Package {
 			continue
 		}
 		seenArg[arg] = true
-		pkg := LoadPackage(arg, &stk)
+		pkg := LoadPackage(arg, &stk, cwd)
 		if seenPkg[pkg] {
 			continue
 		}
@@ -1633,8 +1633,8 @@ func PackagesAndErrors(args []string) []*Package {
 // packagesForBuild is like 'packages' but fails if any of
 // the packages or their dependencies have errors
 // (cannot be built).
-func PackagesForBuild(args []string) []*Package {
-	pkgs := PackagesAndErrors(args)
+func PackagesForBuild(args []string, cwd string) []*Package {
+	pkgs := PackagesAndErrors(args, cwd)
 	printed := map[*PackageError]bool{}
 	for _, pkg := range pkgs {
 		if pkg.Error != nil {
@@ -1675,7 +1675,7 @@ func PackagesForBuild(args []string) []*Package {
 // GoFilesPackage creates a package for building a collection of Go files
 // (typically named on the command line). The target is named p.a for
 // package p or named after the first Go file for package main.
-func GoFilesPackage(gofiles []string) *Package {
+func GoFilesPackage(gofiles []string, cwd string) *Package {
 	// TODO: Remove this restriction.
 	for _, f := range gofiles {
 		if !strings.HasSuffix(f, ".go") {
@@ -1716,7 +1716,7 @@ func GoFilesPackage(gofiles []string) *Package {
 
 	var err error
 	if dir == "" {
-		dir = base.Cwd
+		dir = cwd
 	}
 	dir, err = filepath.Abs(dir)
 	if err != nil {
@@ -1728,7 +1728,7 @@ func GoFilesPackage(gofiles []string) *Package {
 	pkg.Internal.Local = true
 	pkg.Internal.CmdlineFiles = true
 	stk.Push("main")
-	pkg.load(&stk, bp, err)
+	pkg.load(&stk, bp, err, cwd)
 	stk.Pop()
 	pkg.Internal.LocalPrefix = dirToImportPath(dir)
 	pkg.ImportPath = "command-line-arguments"
@@ -1752,13 +1752,13 @@ func GoFilesPackage(gofiles []string) *Package {
 // its test files, and pxtest, the external tests of package p.
 // pxtest may be nil. If there are no test files, forceTest decides
 // whether this returns a new package struct or just returns p.
-func TestPackagesFor(p *Package, forceTest bool) (ptest, pxtest *Package, err error) {
+func TestPackagesFor(p *Package, forceTest bool, cwd string) (ptest, pxtest *Package, err error) {
 	var imports, ximports []*Package
 	var stk ImportStack
 	stk.Push(p.ImportPath + " (test)")
 	rawTestImports := str.StringList(p.TestImports)
 	for i, path := range p.TestImports {
-		p1 := LoadImport(path, p.Dir, p, &stk, p.Internal.Build.TestImportPos[path], ResolveImport)
+		p1 := LoadImport(path, p.Dir, p, &stk, p.Internal.Build.TestImportPos[path], ResolveImport, cwd)
 		if p1.Error != nil {
 			return nil, nil, p1.Error
 		}
@@ -1786,7 +1786,7 @@ func TestPackagesFor(p *Package, forceTest bool) (ptest, pxtest *Package, err er
 	pxtestNeedsPtest := false
 	rawXTestImports := str.StringList(p.XTestImports)
 	for i, path := range p.XTestImports {
-		p1 := LoadImport(path, p.Dir, p, &stk, p.Internal.Build.XTestImportPos[path], ResolveImport)
+		p1 := LoadImport(path, p.Dir, p, &stk, p.Internal.Build.XTestImportPos[path], ResolveImport, cwd)
 		if p1.Error != nil {
 			return nil, nil, p1.Error
 		}

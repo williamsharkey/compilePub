@@ -62,9 +62,10 @@ var testFlagDefn = []*cmdflag.Defn{
 }
 
 // add build flags to testFlagDefn
-func init() {
+//todo add init
+func initTodo(cwd string) {
 	var cmd base.Command
-	work.AddBuildFlags(&cmd)
+	work.AddBuildFlags(&cmd, cwd)
 	cmd.Flag.VisitAll(func(f *flag.Flag) {
 		if f.Name == "v" {
 			// test overrides the build -v flag

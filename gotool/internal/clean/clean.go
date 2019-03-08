@@ -78,7 +78,8 @@ var (
 	cleanTestcache bool // clean -testcache flag
 )
 
-func init() {
+//todo run init
+func initTodo(cwd string) {
 	// break init cycle
 	CmdClean.Run = runClean
 
@@ -91,11 +92,11 @@ func init() {
 	// mentioned explicitly in the docs but they
 	// are part of the build flags.
 
-	work.AddBuildFlags(CmdClean)
+	work.AddBuildFlags(CmdClean, cwd)
 }
 
-func runClean(cmd *base.Command, args []string) {
-	for _, pkg := range load.PackagesAndErrors(args) {
+func runClean(cmd *base.Command, args []string, cwd string) {
+	for _, pkg := range load.PackagesAndErrors(args, cwd) {
 		clean(pkg)
 	}
 

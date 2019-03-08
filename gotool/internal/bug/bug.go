@@ -37,7 +37,7 @@ func init() {
 	CmdBug.Flag.BoolVar(&cfg.BuildV, "v", false, "")
 }
 
-func runBug(cmd *base.Command, args []string) {
+func runBug(cmd *base.Command, args []string, cwd string) {
 	var buf bytes.Buffer
 	buf.WriteString(bugHeader)
 	inspectGoVersion(&buf)

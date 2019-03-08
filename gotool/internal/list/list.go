@@ -141,9 +141,10 @@ For more about specifying packages, see 'go help packages'.
 	`,
 }
 
-func init() {
+//todo init this
+func initTodo(cwd string) {
 	CmdList.Run = runList // break init cycle
-	work.AddBuildFlags(CmdList)
+	work.AddBuildFlags(CmdList, cwd)
 }
 
 var listE = CmdList.Flag.Bool("e", false, "")
@@ -151,7 +152,7 @@ var listFmt = CmdList.Flag.String("f", "{{.ImportPath}}", "")
 var listJson = CmdList.Flag.Bool("json", false, "")
 var nl = []byte{'\n'}
 
-func runList(cmd *base.Command, args []string) {
+func runList(cmd *base.Command, args []string, cwd string) {
 	work.BuildInit()
 	out := newTrackingWriter(os.Stdout)
 	defer out.w.Flush()
@@ -196,9 +197,9 @@ func runList(cmd *base.Command, args []string) {
 
 	var pkgs []*load.Package
 	if *listE {
-		pkgs = load.PackagesAndErrors(args)
+		pkgs = load.PackagesAndErrors(args, cwd)
 	} else {
-		pkgs = load.Packages(args)
+		pkgs = load.Packages(args, cwd)
 	}
 
 	// Estimate whether staleness information is needed,
@@ -211,9 +212,9 @@ func runList(cmd *base.Command, args []string) {
 		a := &work.Action{}
 		// TODO: Use pkgsFilter?
 		for _, p := range pkgs {
-			a.Deps = append(a.Deps, b.AutoAction(work.ModeInstall, work.ModeInstall, p))
+			a.Deps = append(a.Deps, b.AutoAction(work.ModeInstall, work.ModeInstall, p, cwd))
 		}
-		b.Do(a)
+		b.Do(a, cwd)
 	}
 
 	for _, pkg := range pkgs {

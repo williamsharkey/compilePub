@@ -37,7 +37,7 @@ func init() {
 	CmdTool.Flag.BoolVar(&toolN, "n", false, "")
 }
 
-func runTool(cmd *base.Command, args []string) {
+func runTool(cmd *base.Command, args []string, cwd string) {
 	if len(args) == 0 {
 		listTools()
 		return

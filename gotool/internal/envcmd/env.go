@@ -132,7 +132,7 @@ func ExtraEnvVars() []cfg.EnvVar {
 	}
 }
 
-func runEnv(cmd *base.Command, args []string) {
+func runEnv(cmd *base.Command, args []string, cwd string) {
 	env := cfg.CmdEnv
 
 	// Do we need to call ExtraEnvVars, which is a bit expensive?

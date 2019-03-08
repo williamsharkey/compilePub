@@ -27,7 +27,7 @@ import (
 type Command struct {
 	// Run runs the command.
 	// The args are the arguments after the command name.
-	Run func(cmd *Command, args []string)
+	Run func(cmd *Command, args []string, cwd string)
 
 	// UsageLine is the one-line usage message.
 	// The first word in the line is taken to be the command name.
@@ -153,7 +153,7 @@ var Usage func()
 // ExpandScanner expands a scanner.List error into all the errors in the list.
 // The default Error method only shows the first error
 // and does not shorten paths.
-func ExpandScanner(err error) error {
+func ExpandScanner(cwd string, err error) error {
 	// Look for parser errors.
 	if err, ok := err.(scanner.ErrorList); ok {
 		// Prepare error with \n before each message.
@@ -163,7 +163,7 @@ func ExpandScanner(err error) error {
 		// instead of just the first, as err.Error does.
 		var buf bytes.Buffer
 		for _, e := range err {
-			e.Pos.Filename = ShortPath(e.Pos.Filename)
+			e.Pos.Filename = ShortPath(cwd, e.Pos.Filename)
 			buf.WriteString("\n")
 			buf.WriteString(e.Error())
 		}

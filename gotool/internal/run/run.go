@@ -40,10 +40,11 @@ See also: go build.
 	`,
 }
 
-func init() {
+//todo run init
+func initTodo(cwd string) {
 	CmdRun.Run = runRun // break init loop
 
-	work.AddBuildFlags(CmdRun)
+	work.AddBuildFlags(CmdRun, cwd)
 	CmdRun.Flag.Var((*base.StringsFlag)(&work.ExecCmd), "exec", "")
 }
 
@@ -51,7 +52,7 @@ func printStderr(args ...interface{}) (int, error) {
 	return fmt.Fprint(os.Stderr, args...)
 }
 
-func runRun(cmd *base.Command, args []string) {
+func runRun(cmd *base.Command, args []string, cwd string) {
 	work.BuildInit()
 	var b work.Builder
 	b.Init()
@@ -71,7 +72,7 @@ func runRun(cmd *base.Command, args []string) {
 			base.Fatalf("go run: cannot run *_test.go files (%s)", file)
 		}
 	}
-	p := load.GoFilesPackage(files)
+	p := load.GoFilesPackage(files, cwd)
 	if p.Error != nil {
 		base.Fatalf("%s", p.Error)
 	}
@@ -109,14 +110,14 @@ func runRun(cmd *base.Command, args []string) {
 		base.Fatalf("go run: no suitable source files%s", hint)
 	}
 	p.Internal.ExeName = src[:len(src)-len(".go")] // name temporary executable for first go file
-	a1 := b.LinkAction(work.ModeBuild, work.ModeBuild, p)
+	a1 := b.LinkAction(work.ModeBuild, work.ModeBuild, p, cwd)
 	a := &work.Action{Mode: "go run", Func: buildRunProgram, Args: cmdArgs, Deps: []*work.Action{a1}}
-	b.Do(a)
+	b.Do(a, cwd)
 }
 
 // buildRunProgram is the action for running a binary that has already
 // been compiled. We ignore exit status.
-func buildRunProgram(b *work.Builder, a *work.Action) error {
+func buildRunProgram(b *work.Builder, a *work.Action, cwd string) error {
 	cmdline := str.StringList(work.FindExecCmd(), a.Deps[0].Target, a.Args)
 	if cfg.BuildN || cfg.BuildX {
 		b.Showcmd("", "%s", strings.Join(cmdline, " "))

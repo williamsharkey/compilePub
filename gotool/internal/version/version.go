@@ -19,7 +19,7 @@ var CmdVersion = &base.Command{
 	Long:      `Version prints the Go version, as reported by runtime.Version.`,
 }
 
-func runVersion(cmd *base.Command, args []string) {
+func runVersion(cmd *base.Command, args []string, cwd string) {
 	if len(args) != 0 {
 		cmd.Usage()
 	}

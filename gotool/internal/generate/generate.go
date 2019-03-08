@@ -136,12 +136,13 @@ var (
 	generateRunRE   *regexp.Regexp // compiled expression for -run
 )
 
-func init() {
-	work.AddBuildFlags(CmdGenerate)
+//todo run init
+func initTodo(cwd string) {
+	work.AddBuildFlags(CmdGenerate, cwd)
 	CmdGenerate.Flag.StringVar(&generateRunFlag, "run", "", "")
 }
 
-func runGenerate(cmd *base.Command, args []string) {
+func runGenerate(cmd *base.Command, args []string, cwd string) {
 	load.IgnoreImports = true
 
 	if generateRunFlag != "" {
@@ -152,9 +153,9 @@ func runGenerate(cmd *base.Command, args []string) {
 		}
 	}
 	// Even if the arguments are .go files, this loop suffices.
-	for _, pkg := range load.Packages(args) {
+	for _, pkg := range load.Packages(args, cwd) {
 		for _, file := range pkg.InternalGoFiles() {
-			if !generate(pkg.Name, file) {
+			if !generate(pkg.Name, file, cwd) {
 				break
 			}
 		}
@@ -162,7 +163,7 @@ func runGenerate(cmd *base.Command, args []string) {
 }
 
 // generate runs the generation directives for a single file.
-func generate(pkg, absFile string) bool {
+func generate(pkg, absFile string, cwd string) bool {
 	fd, err := os.Open(absFile)
 	if err != nil {
 		log.Fatalf("generate: %s", err)
@@ -174,7 +175,7 @@ func generate(pkg, absFile string) bool {
 		pkg:      pkg,
 		commands: make(map[string][]string),
 	}
-	return g.run()
+	return g.run(cwd)
 }
 
 // A Generator represents the state of a single Go source file
@@ -191,7 +192,7 @@ type Generator struct {
 }
 
 // run runs the generators in the current file.
-func (g *Generator) run() (ok bool) {
+func (g *Generator) run(cwd string) (ok bool) {
 	// Processing below here calls g.errorf on failure, which does panic(stop).
 	// If we encounter an error, we abort the package.
 	defer func() {
@@ -207,7 +208,7 @@ func (g *Generator) run() (ok bool) {
 	g.dir, g.file = filepath.Split(g.path)
 	g.dir = filepath.Clean(g.dir) // No final separator please.
 	if cfg.BuildV {
-		fmt.Fprintf(os.Stderr, "%s\n", base.ShortPath(g.path))
+		fmt.Fprintf(os.Stderr, "%s\n", base.ShortPath(g.path, cwd))
 	}
 
 	// Scan for lines that start "//go:generate".
@@ -223,7 +224,7 @@ func (g *Generator) run() (ok bool) {
 		if err == bufio.ErrBufferFull {
 			// Line too long - consume and ignore.
 			if isGoGenerate(buf) {
-				g.errorf("directive too long")
+				g.errorf(cwd, "directive too long")
 			}
 			for err == bufio.ErrBufferFull {
 				_, err = input.ReadSlice('\n')
@@ -252,12 +253,12 @@ func (g *Generator) run() (ok bool) {
 		}
 
 		g.setEnv()
-		words := g.split(string(buf))
+		words := g.split(string(buf), cwd)
 		if len(words) == 0 {
-			g.errorf("no arguments to directive")
+			g.errorf(cwd, "no arguments to directive")
 		}
 		if words[0] == "-command" {
-			g.setShorthand(words)
+			g.setShorthand(words, cwd)
 			continue
 		}
 		// Run the command line.
@@ -270,7 +271,7 @@ func (g *Generator) run() (ok bool) {
 		g.exec(words)
 	}
 	if err != nil && err != io.EOF {
-		g.errorf("error reading %s: %s", base.ShortPath(g.path), err)
+		g.errorf("error reading %s: %s", base.ShortPath(g.path, cwd), err)
 	}
 	return true
 }
@@ -295,7 +296,7 @@ func (g *Generator) setEnv() {
 // split breaks the line into words, evaluating quoted
 // strings and evaluating environment variables.
 // The initial //go:generate element is present in line.
-func (g *Generator) split(line string) []string {
+func (g *Generator) split(line string, cwd string) []string {
 	// Parse line, obeying quoted strings.
 	var words []string
 	line = line[len("//go:generate ") : len(line)-1] // Drop preamble and final newline.
@@ -316,24 +317,24 @@ Words:
 				switch c {
 				case '\\':
 					if i+1 == len(line) {
-						g.errorf("bad backslash")
+						g.errorf(cwd, "bad backslash")
 					}
 					i++ // Absorb next byte (If it's a multibyte we'll get an error in Unquote).
 				case '"':
 					word, err := strconv.Unquote(line[0 : i+1])
 					if err != nil {
-						g.errorf("bad quoted string")
+						g.errorf(cwd, "bad quoted string")
 					}
 					words = append(words, word)
 					line = line[i+1:]
 					// Check the next character is space or end of line.
 					if len(line) > 0 && line[0] != ' ' && line[0] != '\t' {
-						g.errorf("expect space after quoted argument")
+						g.errorf(cwd, "expect space after quoted argument")
 					}
 					continue Words
 				}
 			}
-			g.errorf("mismatched quoted string")
+			g.errorf(cwd, "mismatched quoted string")
 		}
 		i := strings.IndexAny(line, " \t")
 		if i < 0 {
@@ -359,8 +360,8 @@ var stop = fmt.Errorf("error in generation")
 // errorf logs an error message prefixed with the file and line number.
 // It then exits the program (with exit status 1) because generation stops
 // at the first error.
-func (g *Generator) errorf(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, "%s:%d: %s\n", base.ShortPath(g.path), g.lineNum,
+func (g *Generator) errorf(cwd string, format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, "%s:%d: %s\n", base.ShortPath(g.path, cwd), g.lineNum,
 		fmt.Sprintf(format, args...))
 	panic(stop)
 }
@@ -378,10 +379,10 @@ func (g *Generator) expandVar(word string) string {
 }
 
 // setShorthand installs a new shorthand as defined by a -command directive.
-func (g *Generator) setShorthand(words []string) {
+func (g *Generator) setShorthand(words []string, cwd string) {
 	// Create command shorthand.
 	if len(words) == 1 {
-		g.errorf("no command specified for -command")
+		g.errorf("no command specified for -command", cwd)
 	}
 	command := words[1]
 	if g.commands[command] != nil {

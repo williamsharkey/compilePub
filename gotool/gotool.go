@@ -67,13 +67,13 @@ func init() {
 	}
 }
 
-func RunGet(){
-	cmd:= base.Command{}
+func RunGet(cwd string) {
+	cmd := base.Command{}
 
-	get.RunGet(&cmd,[]string{""})
+	get.RunGet(&cmd, []string{}, cwd)
 }
 
-func GoTool() {
+func GoTool(cwd string) {
 	_ = go11tag
 	flag.Usage = base.Usage
 	flag.Parse()
@@ -143,7 +143,7 @@ func GoTool() {
 				cmd.Flag.Parse(args[1:])
 				args = cmd.Flag.Args()
 			}
-			cmd.Run(cmd, args)
+			cmd.Run(cmd, args, cwd)
 			base.Exit()
 			return
 		}

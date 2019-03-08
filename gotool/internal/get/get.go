@@ -80,18 +80,20 @@ See also: go build, go install, go clean.
 var getD = CmdGet.Flag.Bool("d", false, "")
 var getF = CmdGet.Flag.Bool("f", false, "")
 var getT = CmdGet.Flag.Bool("t", false, "")
-var getU = CmdGet.Flag.Bool("u", false, "")
+var t = true
+var getU = &t //CmdGet.Flag.Bool("u", false, "")
 var getFix = CmdGet.Flag.Bool("fix", false, "")
 var getInsecure = CmdGet.Flag.Bool("insecure", false, "")
 
-func init() {
-	work.AddBuildFlags(CmdGet)
+//todo init
+func initTodo(cwd string) {
+	work.AddBuildFlags(CmdGet, cwd)
 	CmdGet.Run = runGet // break init loop
 }
 
 var RunGet = runGet
 
-func runGet(cmd *base.Command, args []string) {
+func runGet(cmd *base.Command, args []string, cwd string) {
 	work.BuildInit()
 
 	if *getF && !*getU {
@@ -131,9 +133,9 @@ func runGet(cmd *base.Command, args []string) {
 	if *getT {
 		mode |= load.GetTestDeps
 	}
-	args = downloadPaths(args)
+	args = downloadPaths(args, cwd)
 	for _, arg := range args {
-		download(arg, nil, &stk, mode)
+		download(arg, nil, &stk, mode, cwd)
 	}
 	base.ExitIfErrors()
 
@@ -152,8 +154,8 @@ func runGet(cmd *base.Command, args []string) {
 	// This leads to duplicated loads of the standard packages.
 	load.ClearCmdCache()
 
-	args = load.ImportPaths(args)
-	load.PackagesForBuild(args)
+	args = load.ImportPaths(args, cwd)
+	load.PackagesForBuild(args, cwd)
 
 	// Phase 3. Install.
 	if *getD {
@@ -163,7 +165,7 @@ func runGet(cmd *base.Command, args []string) {
 		return
 	}
 
-	work.InstallPackages(args, true)
+	work.InstallPackages(args, true, cwd)
 }
 
 // downloadPaths prepares the list of paths to pass to download.
@@ -171,8 +173,8 @@ func runGet(cmd *base.Command, args []string) {
 // for a particular pattern, downloadPaths leaves it in the result list,
 // in the hope that we can figure out the repository from the
 // initial ...-free prefix.
-func downloadPaths(args []string) []string {
-	args = load.ImportPathsNoDotExpansion(args)
+func downloadPaths(args []string, cwd string) []string {
+	args = load.ImportPathsNoDotExpansion(args, cwd)
 	var out []string
 	for _, a := range args {
 		if strings.Contains(a, "...") {
@@ -210,16 +212,18 @@ var downloadRootCache = map[string]bool{}
 
 // download runs the download half of the get command
 // for the package or pattern named by the argument.
-func download(arg string, parent *load.Package, stk *load.ImportStack, mode int) {
+func download(arg string, parent *load.Package, stk *load.ImportStack, mode int, cwd string) {
+	fmt.Println("download " + arg)
+
 	if mode&load.ResolveImport != 0 {
 		// Caller is responsible for expanding vendor paths.
 		panic("internal error: download mode has useVendor set")
 	}
 	load1 := func(path string, mode int) *load.Package {
 		if parent == nil {
-			return load.LoadPackage(path, stk)
+			return load.LoadPackage(path, stk, cwd)
 		}
-		return load.LoadImport(path, parent.Dir, parent, stk, nil, mode|load.ResolveModule)
+		return load.LoadImport(path, parent.Dir, parent, stk, nil, mode|load.ResolveModule, cwd)
 	}
 
 	p := load1(arg, mode)
@@ -306,7 +310,7 @@ func download(arg string, parent *load.Package, stk *load.ImportStack, mode int)
 			base.Run(cfg.BuildToolexec, str.StringList(base.Tool("fix"), files))
 
 			// The imports might have changed, so reload again.
-			p = load.ReloadPackage(arg, stk)
+			p = load.ReloadPackage(arg, stk, cwd)
 			if p.Error != nil {
 				base.Errorf("%s", p.Error)
 				return
@@ -355,7 +359,7 @@ func download(arg string, parent *load.Package, stk *load.ImportStack, mode int)
 			if i >= len(p.Imports) {
 				path = load.ResolveImportPath(p, path)
 			}
-			download(path, p, stk, 0)
+			download(path, p, stk, 0, cwd)
 		}
 
 		if isWildcard {

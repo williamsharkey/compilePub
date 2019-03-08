@@ -210,7 +210,7 @@ func trimDir(dir string) string {
 	return dir
 }
 
-func (gcToolchain) asm(b *Builder, a *Action, sfiles []string) ([]string, error) {
+func (gcToolchain) asm(b *Builder, a *Action, sfiles []string, cwd string) ([]string, error) {
 	p := a.Package
 	// Add -I pkg/GOOS_GOARCH so #include "textflag.h" works in .s files.
 	inc := filepath.Join(cfg.GOROOT, "pkg", "include")
@@ -233,7 +233,7 @@ func (gcToolchain) asm(b *Builder, a *Action, sfiles []string) ([]string, error)
 		ofile := a.Objdir + sfile[:len(sfile)-len(".s")] + ".o"
 		ofiles = append(ofiles, ofile)
 		args1 := append(args, "-o", ofile, mkAbs(p.Dir, sfile))
-		if err := b.run(a, p.Dir, p.ImportPath, nil, args1...); err != nil {
+		if err := b.run(cwd, a, p.Dir, p.ImportPath, nil, args1...); err != nil {
 			return nil, err
 		}
 	}
@@ -243,12 +243,12 @@ func (gcToolchain) asm(b *Builder, a *Action, sfiles []string) ([]string, error)
 // toolVerify checks that the command line args writes the same output file
 // if run using newTool instead.
 // Unused now but kept around for future use.
-func toolVerify(a *Action, b *Builder, p *load.Package, newTool string, ofile string, args []interface{}) error {
+func toolVerify(cwd string, a *Action, b *Builder, p *load.Package, newTool string, ofile string, args []interface{}) error {
 	newArgs := make([]interface{}, len(args))
 	copy(newArgs, args)
 	newArgs[1] = base.Tool(newTool)
 	newArgs[3] = ofile + ".new" // x.6 becomes x.6.new
-	if err := b.run(a, p.Dir, p.ImportPath, nil, newArgs...); err != nil {
+	if err := b.run(cwd, a, p.Dir, p.ImportPath, nil, newArgs...); err != nil {
 		return err
 	}
 	data1, err := ioutil.ReadFile(ofile)
@@ -266,7 +266,7 @@ func toolVerify(a *Action, b *Builder, p *load.Package, newTool string, ofile st
 	return nil
 }
 
-func (gcToolchain) pack(b *Builder, a *Action, afile string, ofiles []string) error {
+func (gcToolchain) pack(b *Builder, a *Action, afile string, ofiles []string, cwd string) error {
 	var absOfiles []string
 	for _, f := range ofiles {
 		absOfiles = append(absOfiles, mkAbs(a.Objdir, f))
@@ -290,7 +290,7 @@ func (gcToolchain) pack(b *Builder, a *Action, afile string, ofiles []string) er
 		return nil
 	}
 	if err := packInternal(b, absAfile, absOfiles); err != nil {
-		b.showOutput(a, p.Dir, p.ImportPath, err.Error()+"\n")
+		b.showOutput(a, p.Dir, p.ImportPath, err.Error()+"\n", cwd)
 		return errPrintedOutput
 	}
 	return nil
@@ -400,7 +400,7 @@ func pluginPath(a *Action) string {
 	return fmt.Sprintf("plugin/unnamed-%x", h.Sum(nil))
 }
 
-func (gcToolchain) ld(b *Builder, root *Action, out, importcfg, mainpkg string) error {
+func (gcToolchain) ld(b *Builder, root *Action, out, importcfg, mainpkg string, cwd string) error {
 	cxx := len(root.Package.CXXFiles) > 0 || len(root.Package.SwigCXXFiles) > 0
 	for _, a := range root.Deps {
 		if a.Package != nil && (len(a.Package.CXXFiles) > 0 || len(a.Package.SwigCXXFiles) > 0) {
@@ -456,10 +456,10 @@ func (gcToolchain) ld(b *Builder, root *Action, out, importcfg, mainpkg string) 
 		dir, out = filepath.Split(out)
 	}
 
-	return b.run(root, dir, root.Package.ImportPath, nil, cfg.BuildToolexec, base.Tool("link"), "-o", out, "-importcfg", importcfg, ldflags, mainpkg)
+	return b.run(cwd, root, dir, root.Package.ImportPath, nil, cfg.BuildToolexec, base.Tool("link"), "-o", out, "-importcfg", importcfg, ldflags, mainpkg)
 }
 
-func (gcToolchain) ldShared(b *Builder, root *Action, toplevelactions []*Action, out, importcfg string, allactions []*Action) error {
+func (gcToolchain) ldShared(b *Builder, root *Action, toplevelactions []*Action, out, importcfg string, allactions []*Action, cwd string) error {
 	ldflags := []string{"-installsuffix", cfg.BuildContext.InstallSuffix}
 	ldflags = append(ldflags, "-buildmode=shared")
 	ldflags = append(ldflags, forcedLdflags...)
@@ -487,9 +487,9 @@ func (gcToolchain) ldShared(b *Builder, root *Action, toplevelactions []*Action,
 		}
 		ldflags = append(ldflags, d.Package.ImportPath+"="+d.Target)
 	}
-	return b.run(root, ".", out, nil, cfg.BuildToolexec, base.Tool("link"), "-o", out, "-importcfg", importcfg, ldflags)
+	return b.run(cwd, root, ".", out, nil, cfg.BuildToolexec, base.Tool("link"), "-o", out, "-importcfg", importcfg, ldflags)
 }
 
-func (gcToolchain) cc(b *Builder, a *Action, ofile, cfile string) error {
+func (gcToolchain) cc(b *Builder, a *Action, ofile, cfile string, cwd string) error {
 	return fmt.Errorf("%s: C source files not supported without cgo", mkAbs(a.Package.Dir, cfile))
 }

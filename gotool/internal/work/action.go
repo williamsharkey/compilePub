@@ -58,13 +58,13 @@ type Builder struct {
 
 // An Action represents a single action in the action graph.
 type Action struct {
-	Mode       string                        // description of action operation
-	Package    *load.Package                 // the package this action works on
-	Deps       []*Action                     // actions that must happen before this one
-	Func       func(*Builder, *Action) error // the action itself (nil = no-op)
-	IgnoreFail bool                          // whether to run f even if dependencies fail
-	TestOutput *bytes.Buffer                 // test output buffer
-	Args       []string                      // additional args for runProgram
+	Mode       string                                                   // description of action operation
+	Package    *load.Package                                            // the package this action works on
+	Deps       []*Action                                                // actions that must happen before this one
+	Func       func(builder *Builder, action *Action, cwd string) error // the action itself (nil = no-op)
+	IgnoreFail bool                                                     // whether to run f even if dependencies fail
+	TestOutput *bytes.Buffer                                            // test output buffer
+	Args       []string                                                 // additional args for runProgram
 
 	triggers []*Action // inverse of deps
 
@@ -261,7 +261,7 @@ func (b *Builder) NewObjdir() string {
 // at shlibpath. For the native toolchain this list is stored, newline separated, in
 // an ELF note with name "Go\x00\x00" and type 1. For GCCGO it is extracted from the
 // .go_export section.
-func readpkglist(shlibpath string) (pkgs []*load.Package) {
+func readpkglist(shlibpath string, cwd string) (pkgs []*load.Package) {
 	var stk load.ImportStack
 	if cfg.BuildToolchainName == "gccgo" {
 		f, _ := elf.Open(shlibpath)
@@ -273,7 +273,7 @@ func readpkglist(shlibpath string) (pkgs []*load.Package) {
 			if strings.HasPrefix(t, "pkgpath ") {
 				t = strings.TrimPrefix(t, "pkgpath ")
 				t = strings.TrimSuffix(t, ";")
-				pkgs = append(pkgs, load.LoadPackage(t, &stk))
+				pkgs = append(pkgs, load.LoadPackage(t, &stk, cwd))
 			}
 		}
 	} else {
@@ -284,7 +284,7 @@ func readpkglist(shlibpath string) (pkgs []*load.Package) {
 		scanner := bufio.NewScanner(bytes.NewBuffer(pkglistbytes))
 		for scanner.Scan() {
 			t := scanner.Text()
-			pkgs = append(pkgs, load.LoadPackage(t, &stk))
+			pkgs = append(pkgs, load.LoadPackage(t, &stk, cwd))
 		}
 	}
 	return
@@ -304,9 +304,9 @@ func (b *Builder) cacheAction(mode string, p *load.Package, f func() *Action) *A
 }
 
 // AutoAction returns the "right" action for go build or go install of p.
-func (b *Builder) AutoAction(mode, depMode BuildMode, p *load.Package) *Action {
+func (b *Builder) AutoAction(mode, depMode BuildMode, p *load.Package, cwd string) *Action {
 	if p.Name == "main" {
-		return b.LinkAction(mode, depMode, p)
+		return b.LinkAction(mode, depMode, p, cwd)
 	}
 	return b.CompileAction(mode, depMode, p)
 }
@@ -373,7 +373,7 @@ func (b *Builder) CompileAction(mode, depMode BuildMode, p *load.Package) *Actio
 // It depends on the action for compiling p.
 // If the caller may be causing p to be installed, it is up to the caller
 // to make sure that the install depends on (runs after) vet.
-func (b *Builder) VetAction(mode, depMode BuildMode, p *load.Package) *Action {
+func (b *Builder) VetAction(mode, depMode BuildMode, p *load.Package, cwd string) *Action {
 	// Construct vet action.
 	a := b.cacheAction("vet", p, func() *Action {
 		a1 := b.CompileAction(mode, depMode, p)
@@ -381,7 +381,7 @@ func (b *Builder) VetAction(mode, depMode BuildMode, p *load.Package) *Action {
 		// vet expects to be able to import "fmt".
 		var stk load.ImportStack
 		stk.Push("vet")
-		p1 := load.LoadPackage("fmt", &stk)
+		p1 := load.LoadPackage("fmt", &stk, cwd)
 		stk.Pop()
 		aFmt := b.CompileAction(ModeBuild, depMode, p1)
 
@@ -406,7 +406,7 @@ func (b *Builder) VetAction(mode, depMode BuildMode, p *load.Package) *Action {
 // LinkAction returns the action for linking p into an executable
 // and possibly installing the result (according to mode).
 // depMode is the action (build or install) to use when compiling dependencies.
-func (b *Builder) LinkAction(mode, depMode BuildMode, p *load.Package) *Action {
+func (b *Builder) LinkAction(mode, depMode BuildMode, p *load.Package, cwd string) *Action {
 	// Construct link action.
 	a := b.cacheAction("link", p, func() *Action {
 		a := &Action{
@@ -441,7 +441,7 @@ func (b *Builder) LinkAction(mode, depMode BuildMode, p *load.Package) *Action {
 		}
 		a.Target = a.Objdir + filepath.Join("exe", name) + cfg.ExeSuffix
 		a.built = a.Target
-		b.addTransitiveLinkDeps(a, a1, "")
+		b.addTransitiveLinkDeps(a, a1, "", cwd)
 
 		// Sequence the build of the main package (a1) strictly after the build
 		// of all other dependencies that go into the link. It is likely to be after
@@ -527,7 +527,7 @@ func (b *Builder) installAction(a1 *Action, mode BuildMode) *Action {
 // makes sure those are present in a.Deps.
 // If shlib is non-empty, then a corresponds to the build and installation of shlib,
 // so any rebuild of shlib should not be added as a dependency.
-func (b *Builder) addTransitiveLinkDeps(a, a1 *Action, shlib string) {
+func (b *Builder) addTransitiveLinkDeps(a, a1 *Action, shlib string, cwd string) {
 	// Expand Deps to include all built packages, for the linker.
 	// Use breadth-first search to find rebuilt-for-test packages
 	// before the standard ones.
@@ -568,7 +568,7 @@ func (b *Builder) addTransitiveLinkDeps(a, a1 *Action, shlib string) {
 			// we'll end up building an overall library or executable that depends at runtime
 			// on other libraries that are out-of-date, which is clearly not good either.
 			// We call it ModeBuggyInstall to make clear that this is not right.
-			a.Deps = append(a.Deps, b.linkSharedAction(ModeBuggyInstall, ModeBuggyInstall, p1.Shlib, nil))
+			a.Deps = append(a.Deps, b.linkSharedAction(ModeBuggyInstall, ModeBuggyInstall, p1.Shlib, nil, cwd))
 		}
 	}
 }
@@ -604,26 +604,26 @@ func (b *Builder) addInstallHeaderAction(a *Action) {
 
 // buildmodeShared takes the "go build" action a1 into the building of a shared library of a1.Deps.
 // That is, the input a1 represents "go build pkgs" and the result represents "go build -buidmode=shared pkgs".
-func (b *Builder) buildmodeShared(mode, depMode BuildMode, args []string, pkgs []*load.Package, a1 *Action) *Action {
+func (b *Builder) buildmodeShared(mode, depMode BuildMode, args []string, pkgs []*load.Package, a1 *Action, cwd string) *Action {
 	name, err := libname(args, pkgs)
 	if err != nil {
 		base.Fatalf("%v", err)
 	}
-	return b.linkSharedAction(mode, depMode, name, a1)
+	return b.linkSharedAction(mode, depMode, name, a1, cwd)
 }
 
 // linkSharedAction takes a grouping action a1 corresponding to a list of built packages
 // and returns an action that links them together into a shared library with the name shlib.
 // If a1 is nil, shlib should be an absolute path to an existing shared library,
 // and then linkSharedAction reads that library to find out the package list.
-func (b *Builder) linkSharedAction(mode, depMode BuildMode, shlib string, a1 *Action) *Action {
+func (b *Builder) linkSharedAction(mode, depMode BuildMode, shlib string, a1 *Action, cwd string) *Action {
 	fullShlib := shlib
 	shlib = filepath.Base(shlib)
 	a := b.cacheAction("build-shlib "+shlib, nil, func() *Action {
 		if a1 == nil {
 			// TODO(rsc): Need to find some other place to store config,
 			// not in pkg directory. See golang.org/issue/22196.
-			pkgs := readpkglist(fullShlib)
+			pkgs := readpkglist(fullShlib, cwd)
 			a1 = &Action{
 				Mode: "shlib packages",
 			}
@@ -666,7 +666,7 @@ func (b *Builder) linkSharedAction(mode, depMode BuildMode, shlib string, a1 *Ac
 					}
 				}
 				var stk load.ImportStack
-				p := load.LoadPackage(pkg, &stk)
+				p := load.LoadPackage(pkg, &stk, cwd)
 				if p.Error != nil {
 					base.Fatalf("load %s: %v", pkg, p.Error)
 				}
@@ -690,7 +690,7 @@ func (b *Builder) linkSharedAction(mode, depMode BuildMode, shlib string, a1 *Ac
 				add(a, dep, true)
 			}
 		}
-		b.addTransitiveLinkDeps(a, a1, shlib)
+		b.addTransitiveLinkDeps(a, a1, shlib, cwd)
 		return a
 	})
 

@@ -150,7 +150,7 @@ func buildImportcfgSymlinks(b *Builder, root string, importcfg []byte) error {
 	return nil
 }
 
-func (tools gccgoToolchain) asm(b *Builder, a *Action, sfiles []string) ([]string, error) {
+func (tools gccgoToolchain) asm(b *Builder, a *Action, sfiles []string, cwd string) ([]string, error) {
 	p := a.Package
 	var ofiles []string
 	for _, sfile := range sfiles {
@@ -164,7 +164,7 @@ func (tools gccgoToolchain) asm(b *Builder, a *Action, sfiles []string) ([]strin
 		}
 		defs = tools.maybePIC(defs)
 		defs = append(defs, b.gccArchArgs()...)
-		err := b.run(a, p.Dir, p.ImportPath, nil, tools.compiler(), "-xassembler-with-cpp", "-I", a.Objdir, "-c", "-o", ofile, defs, sfile)
+		err := b.run(cwd, a, p.Dir, p.ImportPath, nil, tools.compiler(), "-xassembler-with-cpp", "-I", a.Objdir, "-c", "-o", ofile, defs, sfile)
 		if err != nil {
 			return nil, err
 		}
@@ -179,17 +179,17 @@ func gccgoArchive(basedir, imp string) string {
 	return filepath.Join(filepath.Dir(afile), "lib"+filepath.Base(afile))
 }
 
-func (gccgoToolchain) pack(b *Builder, a *Action, afile string, ofiles []string) error {
+func (gccgoToolchain) pack(b *Builder, a *Action, afile string, ofiles []string, cwd string) error {
 	p := a.Package
 	objdir := a.Objdir
 	var absOfiles []string
 	for _, f := range ofiles {
 		absOfiles = append(absOfiles, mkAbs(objdir, f))
 	}
-	return b.run(a, p.Dir, p.ImportPath, nil, "ar", "rc", mkAbs(objdir, afile), absOfiles)
+	return b.run(cwd, a, p.Dir, p.ImportPath, nil, "ar", "rc", mkAbs(objdir, afile), absOfiles)
 }
 
-func (tools gccgoToolchain) link(b *Builder, root *Action, out, importcfg string, allactions []*Action, buildmode, desc string) error {
+func (tools gccgoToolchain) link(cwd string, b *Builder, root *Action, out, importcfg string, allactions []*Action, buildmode, desc string) error {
 	// gccgo needs explicit linking with all package dependencies,
 	// and all LDFLAGS from cgo dependencies.
 	afiles := []string{}
@@ -245,11 +245,11 @@ func (tools gccgoToolchain) link(b *Builder, root *Action, out, importcfg string
 				return "", nil
 			}
 		}
-		err := b.run(root, root.Objdir, desc, nil, "ar", "x", newArchive, "_cgo_flags")
+		err := b.run(cwd, root, root.Objdir, desc, nil, "ar", "x", newArchive, "_cgo_flags")
 		if err != nil {
 			return "", err
 		}
-		err = b.run(root, ".", desc, nil, "ar", "d", newArchive, "_cgo_flags")
+		err = b.run(cwd, root, ".", desc, nil, "ar", "d", newArchive, "_cgo_flags")
 		if err != nil {
 			return "", err
 		}
@@ -439,28 +439,28 @@ func (tools gccgoToolchain) link(b *Builder, root *Action, out, importcfg string
 		}
 	}
 
-	if err := b.run(root, ".", desc, nil, tools.linker(), "-o", out, ldflags, forcedGccgoflags, root.Package.Internal.Gccgoflags); err != nil {
+	if err := b.run(cwd, root, ".", desc, nil, tools.linker(), "-o", out, ldflags, forcedGccgoflags, root.Package.Internal.Gccgoflags); err != nil {
 		return err
 	}
 
 	switch buildmode {
 	case "c-archive":
-		if err := b.run(root, ".", desc, nil, "ar", "rc", realOut, out); err != nil {
+		if err := b.run(cwd, root, ".", desc, nil, "ar", "rc", realOut, out); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (tools gccgoToolchain) ld(b *Builder, root *Action, out, importcfg, mainpkg string) error {
-	return tools.link(b, root, out, importcfg, root.Deps, ldBuildmode, root.Package.ImportPath)
+func (tools gccgoToolchain) ld(b *Builder, root *Action, out, importcfg, mainpkg string, cwd string) error {
+	return tools.link(cwd, b, root, out, importcfg, root.Deps, ldBuildmode, root.Package.ImportPath)
 }
 
-func (tools gccgoToolchain) ldShared(b *Builder, root *Action, toplevelactions []*Action, out, importcfg string, allactions []*Action) error {
-	return tools.link(b, root, out, importcfg, allactions, "shared", out)
+func (tools gccgoToolchain) ldShared(b *Builder, root *Action, toplevelactions []*Action, out, importcfg string, allactions []*Action, cwd string) error {
+	return tools.link(cwd, b, root, out, importcfg, allactions, "shared", out)
 }
 
-func (tools gccgoToolchain) cc(b *Builder, a *Action, ofile, cfile string) error {
+func (tools gccgoToolchain) cc(b *Builder, a *Action, ofile, cfile string, cwd string) error {
 	p := a.Package
 	inc := filepath.Join(cfg.GOROOT, "pkg", "include")
 	cfile = mkAbs(p.Dir, cfile)
@@ -474,7 +474,7 @@ func (tools gccgoToolchain) cc(b *Builder, a *Action, ofile, cfile string) error
 		defs = append(defs, "-fsplit-stack")
 	}
 	defs = tools.maybePIC(defs)
-	return b.run(a, p.Dir, p.ImportPath, nil, envList("CC", cfg.DefaultCC(cfg.Goos, cfg.Goarch)), "-Wall", "-g",
+	return b.run(cwd, a, p.Dir, p.ImportPath, nil, envList("CC", cfg.DefaultCC(cfg.Goos, cfg.Goarch)), "-Wall", "-g",
 		"-I", a.Objdir, "-I", inc, "-o", ofile, defs, "-c", cfile)
 }
 

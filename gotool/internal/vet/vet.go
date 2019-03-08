@@ -34,7 +34,7 @@ See also: go fmt, go fix.
 	`,
 }
 
-func runVet(cmd *base.Command, args []string) {
+func runVet(cmd *base.Command, args []string, cwd string) {
 	vetFlags, pkgArgs := vetFlags(args)
 
 	work.BuildInit()
@@ -47,7 +47,7 @@ func runVet(cmd *base.Command, args []string) {
 		}
 	}
 
-	pkgs := load.PackagesForBuild(pkgArgs)
+	pkgs := load.PackagesForBuild(pkgArgs, cwd)
 	if len(pkgs) == 0 {
 		base.Fatalf("no packages to vet")
 	}
@@ -57,7 +57,7 @@ func runVet(cmd *base.Command, args []string) {
 
 	root := &work.Action{Mode: "go vet"}
 	for _, p := range pkgs {
-		ptest, pxtest, err := load.TestPackagesFor(p, false)
+		ptest, pxtest, err := load.TestPackagesFor(p, false, cwd)
 		if err != nil {
 			base.Errorf("%v", err)
 			continue
@@ -67,11 +67,11 @@ func runVet(cmd *base.Command, args []string) {
 			continue
 		}
 		if len(ptest.GoFiles) > 0 || len(ptest.CgoFiles) > 0 {
-			root.Deps = append(root.Deps, b.VetAction(work.ModeBuild, work.ModeBuild, ptest))
+			root.Deps = append(root.Deps, b.VetAction(work.ModeBuild, work.ModeBuild, ptest, cwd))
 		}
 		if pxtest != nil {
-			root.Deps = append(root.Deps, b.VetAction(work.ModeBuild, work.ModeBuild, pxtest))
+			root.Deps = append(root.Deps, b.VetAction(work.ModeBuild, work.ModeBuild, pxtest, cwd))
 		}
 	}
-	b.Do(root)
+	b.Do(root, cwd)
 }

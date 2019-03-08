@@ -57,15 +57,34 @@ func Link() {
 	link.Link()
 }
 
-func Get() {
-	gotool.RunGet()
+func Get(cwd string) {
+	z := os.Args[0:1]
+	os.Args = append(z, "get", "-v")
+
+	gotool.GoTool(cwd)
+	//gotool.RunGet()
 }
 
-func Build(sourcePath string) {
-	Get()
-	z := os.Args[0:1]
+func Build(dir string) (err error) {
+	err = os.Chdir(dir)
 
-	os.Args = append(z, "-o", "out.o", sourcePath) //"hello/helloworld.go")
+	if err != nil {
+		return
+	}
+
+	x, err := os.Getwd()
+
+	if err != nil {
+		return
+	}
+	fmt.Println(x)
+
+	z := os.Args[0:1]
+	os.Args = append(z, "-u") //"hello/helloworld.go")
+
+	Get(x)
+
+	os.Args = append(z, "-o", "out.o", dir) //"hello/helloworld.go")
 	//os.Args=append(os.Args, "C:/Users/william/go/src/github.com/williamsharkey/compilePub/hello/helloworld.go")
 	Compile()
 
@@ -74,4 +93,5 @@ func Build(sourcePath string) {
 	Link()
 	errorCount := link.ErrorOrExit()
 	os.Exit(errorCount)
+	return
 }

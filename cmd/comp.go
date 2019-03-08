@@ -5,6 +5,6 @@ import (
 )
 
 func main() {
-	compilePub.Build("hello/helloworld.go")
+	compilePub.Build("hello/")
 
 }

@@ -18,11 +18,11 @@ func getwd() string {
 	return wd
 }
 
-var Cwd = getwd()
+//var Cwd = getwd()
 
 // ShortPath returns an absolute or relative name for path, whatever is shorter.
-func ShortPath(path string) string {
-	if rel, err := filepath.Rel(Cwd, path); err == nil && len(rel) < len(path) {
+func ShortPath(cwd string, path string) string {
+	if rel, err := filepath.Rel(cwd, path); err == nil && len(rel) < len(path) {
 		return rel
 	}
 	return path

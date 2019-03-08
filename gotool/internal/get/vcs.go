@@ -412,9 +412,34 @@ func (v *vcsCmd) run1(dir string, cmdline string, keyval []string, verbose bool)
 		}
 		args = args[2:]
 	}
+	if v.name == "Git" {
+		if len(args) == 2 && args[0] == "config" && args[1] == "remote.origin.url" {
+			x := "https://" + dir[strings.Index(dir, "github.com"):]
+			x = strings.Replace(x, "\\", "/", -1)
+			return []byte(x), nil
+		} else if len(args) == 2 && args[0] == "pull" && args[1] == "--ff-only" {
+			//regurgitate.GetFiles("",args[1],"","")
+			//files:=gogit.Clone("","",args[1],nil)
+			//fmt.Println(files)
+			return []byte{}, nil
+		} else if cmdline == "submodule update --init --recursive" {
+			//regurgitate.GetFiles("",args[1],"","")
+			//files:=gogit.Clone("","",args[1],nil)
+			//fmt.Println(files)
+			return []byte{}, nil
+		} else if cmdline == "show-ref" {
+			//regurgitate.GetFiles("",args[1],"","")
+			//files:=gogit.Clone("","",args[1],nil)
+			//fmt.Println(files)
+			return []byte("show ref for " + dir), nil
+		} else {
+			fmt.Println("need to handle git for " + cmdline)
+		}
 
+	}
 	_, err := exec.LookPath(v.cmd)
 	if err != nil {
+
 		fmt.Fprintf(os.Stderr,
 			"go: missing %s command. See https://golang.org/s/gogetcmd\n",
 			v.name)

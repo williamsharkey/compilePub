@@ -1,7 +1,9 @@
 package main
 
-import "fmt2"
+import "fmt"
+import "github.com/johnnylambda/voronoi"
 
 func main() {
-	fmt2.Println("hello world")
+	fmt.Println(voronoi.Number())
+
 }

@@ -58,9 +58,10 @@ var vetFlagDefn = []*cmdflag.Defn{
 var vetTool string
 
 // add build flags to vetFlagDefn.
-func init() {
+//todo init
+func initTodo(cwd string) {
 	var cmd base.Command
-	work.AddBuildFlags(&cmd)
+	work.AddBuildFlags(&cmd, cwd)
 	cmd.Flag.StringVar(&vetTool, "vettool", "", "path to vet tool binary") // for cmd/vet tests; undocumented for now
 	cmd.Flag.VisitAll(func(f *flag.Flag) {
 		vetFlagDefn = append(vetFlagDefn, &cmdflag.Defn{

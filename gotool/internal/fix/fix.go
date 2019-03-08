@@ -28,8 +28,8 @@ See also: go fmt, go vet.
 	`,
 }
 
-func runFix(cmd *base.Command, args []string) {
-	for _, pkg := range load.Packages(args) {
+func runFix(cmd *base.Command, args []string, cwd string) {
+	for _, pkg := range load.Packages(args, cwd) {
 		// Use pkg.gofiles instead of pkg.Dir so that
 		// the command only applies to this package,
 		// not to packages in subdirectories.

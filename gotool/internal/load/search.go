@@ -326,8 +326,8 @@ func replaceVendor(x, repl string) string {
 }
 
 // ImportPaths returns the import paths to use for the given command line.
-func ImportPaths(args []string) []string {
-	args = ImportPathsNoDotExpansion(args)
+func ImportPaths(args []string, cwd string) []string {
+	args = ImportPathsNoDotExpansion(args, cwd)
 	var out []string
 	for _, a := range args {
 		if strings.Contains(a, "...") {
@@ -345,9 +345,9 @@ func ImportPaths(args []string) []string {
 
 // ImportPathsNoDotExpansion returns the import paths to use for the given
 // command line, but it does no ... expansion.
-func ImportPathsNoDotExpansion(args []string) []string {
+func ImportPathsNoDotExpansion(args []string, cwd string) []string {
 	if cmdlineMatchers == nil {
-		SetCmdlinePatterns(args)
+		SetCmdlinePatterns(args, cwd)
 	}
 	if len(args) == 0 {
 		return []string{"."}
