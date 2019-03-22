@@ -6,8 +6,7 @@ package compilePub
 
 import (
 	"fmt"
-	"github.com/williamsharkey/compilePub/gotool"
-
+	"github.com/williamsharkey/compilePub/gotool/get"
 	"github.com/williamsharkey/compilePub/internal/amd64"
 	"github.com/williamsharkey/compilePub/internal/arm"
 	"github.com/williamsharkey/compilePub/internal/arm64"
@@ -57,13 +56,14 @@ func Link() {
 	link.Link()
 }
 
-func Get(cwd string) {
-	z := os.Args[0:1]
-	os.Args = append(z, "get", "-v")
-
-	gotool.GoTool(cwd)
-	//gotool.RunGet()
-}
+//
+//func Get(cwd string) {
+//	z := os.Args[0:1]
+//	os.Args = append(z, "get", "-v")
+//
+//	gotool.GoTool(cwd)
+//	//gotool.RunGet()
+//}
 
 func Build(dir string) (err error) {
 	err = os.Chdir(dir)
@@ -81,8 +81,8 @@ func Build(dir string) (err error) {
 
 	z := os.Args[0:1]
 	os.Args = append(z, "-u") //"hello/helloworld.go")
-
-	Get(x)
+	get.RunGet(get.CmdGet, false, false, false, false, nil, dir)
+	//Get(x)
 
 	os.Args = append(z, "-o", "out.o", dir) //"hello/helloworld.go")
 	//os.Args=append(os.Args, "C:/Users/william/go/src/github.com/williamsharkey/compilePub/hello/helloworld.go")
